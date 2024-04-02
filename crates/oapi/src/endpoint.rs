@@ -3,7 +3,7 @@ use std::any::TypeId;
 use salvo_core::http::StatusCode;
 use salvo_core::{prelude::StatusError, writing};
 
-use crate::{Components, SchemaStack, Operation, Response, ToResponse, ToResponses, ToSchema};
+use crate::{Components, Operation, Response, SchemaStack, ToResponse, ToResponses, ToSchema};
 
 /// Represents an endpoint.
 ///

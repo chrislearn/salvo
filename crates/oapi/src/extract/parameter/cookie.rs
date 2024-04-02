@@ -7,7 +7,7 @@ use salvo_core::serde::from_str_val;
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, SchemaStack, Operation, Parameter, ParameterIn, ToSchema};
+use crate::{Components, Operation, Parameter, ParameterIn, SchemaStack, ToSchema};
 
 /// Represents the parameters passed by Cookie.
 pub struct CookieParam<T, const REQUIRED: bool>(Option<T>);

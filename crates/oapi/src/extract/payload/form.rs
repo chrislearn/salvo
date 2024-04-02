@@ -6,7 +6,7 @@ use salvo_core::{async_trait, Request, Writer};
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Content, Operation, SchemaStack, RequestBody, ToRequestBody, ToSchema};
+use crate::{Components, Content, Operation, RequestBody, SchemaStack, ToRequestBody, ToSchema};
 
 /// Represents the parameters passed by the URI path.
 pub struct FormBody<T>(pub T);
@@ -42,7 +42,10 @@ where
                 "application/x-www-form-urlencoded",
                 Content::new(T::to_schema(components, SchemaStack::new())),
             )
-            .add_content("multipart/*", Content::new(T::to_schema(components, SchemaStack::new())))
+            .add_content(
+                "multipart/*",
+                Content::new(T::to_schema(components, SchemaStack::new())),
+            )
     }
 }
 

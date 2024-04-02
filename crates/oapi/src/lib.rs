@@ -51,8 +51,8 @@ use std::marker::PhantomData;
 
 // use once_cell::sync::Lazy;
 // use parking_lot::RwLock;
-use salvo_core::http::StatusError;
 use indexmap::IndexMap;
+use salvo_core::http::StatusError;
 use salvo_core::{extract::Extractible, writing};
 
 use crate::oapi::openapi::schema::OneOf;
@@ -67,10 +67,16 @@ impl SchemaStack {
     pub fn new() -> Self {
         Self(IndexMap::new())
     }
-    pub fn new_from_type<T>() -> Self where T: 'static {
+    pub fn new_from_type<T>() -> Self
+    where
+        T: 'static,
+    {
         Self(IndexMap::from_iter([(TypeId::of::<T>(), type_name::<T>())]))
     }
-    pub fn push<T>(&mut self) where T: 'static {
+    pub fn push<T>(&mut self)
+    where
+        T: 'static,
+    {
         if self.contains::<T>() {
             panic!("recursive type detected:{} {:#?}", type_name::<T>(), self);
         }
@@ -672,10 +678,7 @@ where
     C: ToSchema + 'static,
 {
     fn to_response(components: &mut Components) -> RefOr<Response> {
-        let schema = <C as ToSchema>::to_schema(
-            components,
-            SchemaStack::new_from_type::<Self>(),
-        );
+        let schema = <C as ToSchema>::to_schema(components, SchemaStack::new_from_type::<Self>());
         Response::new("Response with json format data")
             .add_content("application/json", Content::new(schema))
             .into()
@@ -713,8 +716,16 @@ mod tests {
                 i64::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int64"}),
             ),
-            ("i128", i128::to_schema(&mut components, SchemaStack::new()), json!({"type": "integer"})),
-            ("isize", isize::to_schema(&mut components, SchemaStack::new()), json!({"type": "integer"})),
+            (
+                "i128",
+                i128::to_schema(&mut components, SchemaStack::new()),
+                json!({"type": "integer"}),
+            ),
+            (
+                "isize",
+                isize::to_schema(&mut components, SchemaStack::new()),
+                json!({"type": "integer"}),
+            ),
             (
                 "u8",
                 u8::to_schema(&mut components, SchemaStack::new()),
@@ -745,10 +756,26 @@ mod tests {
                 usize::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "minimum": 0.0 }),
             ),
-            ("bool", bool::to_schema(&mut components, SchemaStack::new()), json!({"type": "boolean"})),
-            ("str", str::to_schema(&mut components, SchemaStack::new()), json!({"type": "string"})),
-            ("String", String::to_schema(&mut components, SchemaStack::new()), json!({"type": "string"})),
-            ("char", char::to_schema(&mut components, SchemaStack::new()), json!({"type": "string"})),
+            (
+                "bool",
+                bool::to_schema(&mut components, SchemaStack::new()),
+                json!({"type": "boolean"}),
+            ),
+            (
+                "str",
+                str::to_schema(&mut components, SchemaStack::new()),
+                json!({"type": "string"}),
+            ),
+            (
+                "String",
+                String::to_schema(&mut components, SchemaStack::new()),
+                json!({"type": "string"}),
+            ),
+            (
+                "char",
+                char::to_schema(&mut components, SchemaStack::new()),
+                json!({"type": "string"}),
+            ),
             (
                 "f32",
                 f32::to_schema(&mut components, SchemaStack::new()),

@@ -6,7 +6,7 @@ use salvo_core::http::{ParseError, Request};
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, SchemaStack, Operation, Parameter, ParameterIn, ToSchema};
+use crate::{Components, Operation, Parameter, ParameterIn, SchemaStack, ToSchema};
 
 /// Represents the parameters passed by the URI path.
 pub struct PathParam<T>(pub T);

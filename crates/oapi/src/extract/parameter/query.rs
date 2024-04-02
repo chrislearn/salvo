@@ -7,7 +7,7 @@ use salvo_core::Request;
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Operation, SchemaStack, Parameter, ParameterIn, ToSchema};
+use crate::{Components, Operation, Parameter, ParameterIn, SchemaStack, ToSchema};
 
 /// Represents the parameters passed by the URI path.
 pub struct QueryParam<T, const REQUIRED: bool>(Option<T>);

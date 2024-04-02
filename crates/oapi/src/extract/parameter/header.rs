@@ -6,7 +6,7 @@ use salvo_core::http::{ParseError, Request};
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Operation, Parameter, SchemaStack, ParameterIn, ToSchema};
+use crate::{Components, Operation, Parameter, ParameterIn, SchemaStack, ToSchema};
 
 /// Represents the parameters passed by header.
 pub struct HeaderParam<T, const REQUIRED: bool>(Option<T>);
