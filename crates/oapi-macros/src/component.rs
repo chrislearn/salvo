@@ -363,12 +363,12 @@ impl<'c> ComponentSchema {
                             if std::any::TypeId::of::<#type_path>() == std::any::TypeId::of::<Self>() {
                                 #oapi::oapi::RefOr::<#oapi::oapi::Schema>::Ref(#oapi::oapi::schema::Ref::new("#"))
                             } else {
-                                #oapi::oapi::RefOr::from(<#type_path as #oapi::oapi::ToSchema>::to_schema(components))
+                                #oapi::oapi::RefOr::from(<#type_path as #oapi::oapi::ToSchema>::to_schema(components, call_stack.clone()))
                             }
                         }
                     } else {
                         quote! {
-                            <#type_path as #oapi::oapi::ToSchema>::to_schema(components)
+                            <#type_path as #oapi::oapi::ToSchema>::to_schema(components, call_stack.clone())
                         }
                     };
                     if is_inline {

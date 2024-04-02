@@ -7,7 +7,7 @@ use salvo_core::serde::from_str_val;
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Operation, Parameter, ParameterIn, ToSchema};
+use crate::{Components, SchemaStack, Operation, Parameter, ParameterIn, ToSchema};
 
 /// Represents the parameters passed by Cookie.
 pub struct CookieParam<T, const REQUIRED: bool>(Option<T>);
@@ -135,7 +135,7 @@ where
         let parameter = Parameter::new(arg)
             .parameter_in(ParameterIn::Cookie)
             .description(format!("Get parameter `{arg}` from request cookie."))
-            .schema(T::to_schema(components))
+            .schema(T::to_schema(components, SchemaStack::new()))
             .required(R);
         operation.parameters.insert(parameter);
     }

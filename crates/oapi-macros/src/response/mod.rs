@@ -258,7 +258,7 @@ impl ToTokens for ResponseTuple<'_> {
                  -> TokenStream2 {
                     let content_schema = match path_type {
                         PathType::RefPath(ref_type) => quote! {
-                            <#ref_type as #oapi::oapi::ToSchema>::to_schema(components)
+                            <#ref_type as #oapi::oapi::ToSchema>::to_schema(components, #oapi::oapi::SchemaStack::new_from_type::<Self>())
                         }
                         .to_token_stream(),
                         PathType::MediaType(ref path_type) => {

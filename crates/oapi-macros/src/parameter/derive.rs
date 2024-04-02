@@ -202,6 +202,7 @@ impl ToTokens for ToParameters {
         tokens.extend(quote!{
             impl #ex_impl_generics #oapi::oapi::ToParameters<'__macro_gen_ex> for #ident #ty_generics #where_clause {
                 fn to_parameters(components: &mut #oapi::oapi::Components) -> #oapi::oapi::Parameters {
+                    let mut call_stack = #oapi::oapi::SchemaStack::new();
                     #oapi::oapi::Parameters(#params.to_vec())
                 }
             }

@@ -6,7 +6,7 @@ use salvo_core::http::{ParseError, Request};
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Operation, Parameter, ParameterIn, ToSchema};
+use crate::{Components, Operation, Parameter, SchemaStack, ParameterIn, ToSchema};
 
 /// Represents the parameters passed by header.
 pub struct HeaderParam<T, const REQUIRED: bool>(Option<T>);
@@ -136,7 +136,7 @@ where
         let parameter = Parameter::new(arg)
             .parameter_in(ParameterIn::Header)
             .description(format!("Get parameter `{arg}` from request headers."))
-            .schema(T::to_schema(components))
+            .schema(T::to_schema(components, SchemaStack::new()))
             .required(R);
         operation.parameters.insert(parameter);
     }

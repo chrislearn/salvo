@@ -6,7 +6,7 @@ use salvo_core::{Request, Writer};
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Content, Operation, RequestBody, ToRequestBody, ToSchema};
+use crate::{Components, Content, Operation, RequestBody,SchemaStack, ToRequestBody, ToSchema};
 
 /// Represents the parameters passed by the URI path.
 pub struct JsonBody<T>(pub T);
@@ -38,7 +38,7 @@ where
     fn to_request_body(components: &mut Components) -> RequestBody {
         RequestBody::new()
             .description("Extract json format data from request.")
-            .add_content("application/json", Content::new(T::to_schema(components)))
+            .add_content("application/json", Content::new(T::to_schema(components, SchemaStack::new())))
     }
 }
 
@@ -93,11 +93,11 @@ where
 
 impl<'de, T> EndpointArgRegister for JsonBody<T>
 where
-    T: Deserialize<'de> + ToSchema,
+    T: Deserialize<'de> + ToSchema + 'static,
 {
     fn register(components: &mut Components, operation: &mut Operation, _arg: &str) {
         let request_body = Self::to_request_body(components);
-        let _ = <T as ToSchema>::to_schema(components);
+        let _ = <T as ToSchema>::to_schema(components, SchemaStack::new_from_type::<Self>());
         operation.request_body = Some(request_body);
     }
 }

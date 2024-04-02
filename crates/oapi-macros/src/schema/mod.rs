@@ -111,13 +111,20 @@ impl ToTokens for ToSchema<'_> {
                 quote! {
                     let schema = #variant;
                     components.schemas.insert(#symbol, schema.into());
+
+                    // #[cfg(debug_assertions)]
+                    // #oapi::oapi::__private::inventory::submit! {
+                    //     #oapi::oapi::SchemaRegistry::save(#symbol, std::any::TypeId::of::<#ident #ty_generics>(), std::any::type_name::<#ident #ty_generics>())
+                    // }
+
                     #oapi::oapi::RefOr::Ref(#oapi::oapi::Ref::new(format!("#/components/schemas/{}", #symbol)))
                 }
             }
         };
         tokens.extend(quote!{
             impl #impl_generics #oapi::oapi::ToSchema for #ident #ty_generics #where_clause {
-                fn to_schema(components: &mut #oapi::oapi::Components) -> #oapi::oapi::RefOr<#oapi::oapi::schema::Schema> {
+                fn to_schema(components: &mut #oapi::oapi::Components, mut call_stack: #oapi::oapi::SchemaStack) -> #oapi::oapi::RefOr<#oapi::oapi::schema::Schema> {
+                    call_stack.push::<Self>();
                     #body
                 }
             }

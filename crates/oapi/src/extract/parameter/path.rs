@@ -6,7 +6,7 @@ use salvo_core::http::{ParseError, Request};
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Operation, Parameter, ParameterIn, ToSchema};
+use crate::{Components, SchemaStack, Operation, Parameter, ParameterIn, ToSchema};
 
 /// Represents the parameters passed by the URI path.
 pub struct PathParam<T>(pub T);
@@ -90,7 +90,7 @@ where
         let parameter = Parameter::new(arg)
             .parameter_in(ParameterIn::Path)
             .description(format!("Get parameter `{arg}` from request url path."))
-            .schema(T::to_schema(components))
+            .schema(T::to_schema(components, SchemaStack::new()))
             .required(true);
         operation.parameters.insert(parameter);
     }

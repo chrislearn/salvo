@@ -42,6 +42,7 @@ inventory = { workspace = true }
 mime-infer = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
+parking_lot = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }

@@ -7,7 +7,7 @@ use salvo_core::Request;
 use serde::{Deserialize, Deserializer};
 
 use crate::endpoint::EndpointArgRegister;
-use crate::{Components, Operation, Parameter, ParameterIn, ToSchema};
+use crate::{Components, Operation, SchemaStack, Parameter, ParameterIn, ToSchema};
 
 /// Represents the parameters passed by the URI path.
 pub struct QueryParam<T, const REQUIRED: bool>(Option<T>);
@@ -126,7 +126,7 @@ where
         let parameter = Parameter::new(arg)
             .parameter_in(ParameterIn::Query)
             .description(format!("Get parameter `{arg}` from request url query."))
-            .schema(T::to_schema(components))
+            .schema(T::to_schema(components, SchemaStack::new()))
             .required(R);
         operation.parameters.insert(parameter);
     }

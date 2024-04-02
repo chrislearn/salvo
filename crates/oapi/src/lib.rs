@@ -45,16 +45,67 @@ pub use salvo_oapi_macros::ToResponses;
 #[doc = include_str!("../docs/derive_to_schema.md")]
 pub use salvo_oapi_macros::ToSchema;
 
+use std::any::{type_name, TypeId};
 use std::collections::{BTreeMap, HashMap, LinkedList};
 use std::marker::PhantomData;
 
+// use once_cell::sync::Lazy;
+// use parking_lot::RwLock;
 use salvo_core::http::StatusError;
+use indexmap::IndexMap;
 use salvo_core::{extract::Extractible, writing};
 
 use crate::oapi::openapi::schema::OneOf;
 
 // https://github.com/bkchr/proc-macro-crate/issues/10
 extern crate self as salvo_oapi;
+
+#[derive(Debug, Clone, Default)]
+pub struct SchemaStack(pub IndexMap<TypeId, &'static str>);
+
+impl SchemaStack {
+    pub fn new() -> Self {
+        Self(IndexMap::new())
+    }
+    pub fn new_from_type<T>() -> Self where T: 'static {
+        Self(IndexMap::from_iter([(TypeId::of::<T>(), type_name::<T>())]))
+    }
+    pub fn push<T>(&mut self) where T: 'static {
+        if self.contains::<T>() {
+            panic!("recursive type detected:{} {:#?}", type_name::<T>(), self);
+        }
+        self.0.insert(TypeId::of::<T>(), type_name::<T>());
+    }
+    pub fn contains<T>(&self) -> bool {
+        self.0.contains_key(&TypeId::of::<Self>())
+    }
+}
+
+// #[doc(hidden)]
+// #[non_exhaustive]
+// pub struct SchemaRegistry {
+//     pub schema_name: String,
+//     pub type_id: TypeId,
+//     pub type_name: &'static str,
+// }
+
+// impl SchemaRegistry {
+//     /// Save the endpoint information to the components.
+//     pub const fn save(schema_name: String, type_id: TypeId, type_name: &'static str) -> Self {
+//         // https://github.com/rust-lang/rust/issues/87575
+//         // inventory::iter::<SchemaRegistry>.into_iter().inspect(|record| {
+//         //     if record.schema_name == *schema_name {
+//         //         if record.type_id != type_id {
+//         //             panic!("schema name `{schema_name}` used by `{:?}`, can not be used by `{type_name:?}`", record.type_name);
+//         //         } else {
+//         //             panic!("why schema name `{schema_name}` register twice by `{}`?", record.type_name);
+//         //         }
+//         //     }
+//         // });
+//         Self { schema_name, type_id, type_name }
+//     }
+// }
+// inventory::collect!(SchemaRegistry);
 
 /// Trait for implementing OpenAPI Schema object.
 ///
@@ -89,7 +140,8 @@ extern crate self as salvo_oapi;
 /// # }
 /// #
 /// impl ToSchema for Pet {
-///     fn to_schema(components: &mut Components) -> RefOr<Schema> {
+///     fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<Schema> {
+///         call_stack.push::<Self>();
 ///         Object::new()
 ///             .property(
 ///                 "id",
@@ -124,7 +176,7 @@ extern crate self as salvo_oapi;
 pub trait ToSchema {
     /// Returns a tuple of name and schema or reference to a schema that can be referenced by the
     /// name or inlined directly to responses, request bodies or parameters.
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema>;
+    fn to_schema(components: &mut Components, call_stack: SchemaStack) -> RefOr<schema::Schema>;
 }
 
 /// Represents _`nullable`_ type. This can be used anywhere where "nothing" needs to be evaluated.
@@ -133,7 +185,7 @@ pub trait ToSchema {
 pub type TupleUnit = ();
 
 impl ToSchema for TupleUnit {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+    fn to_schema(_components: &mut Components, _call_stack: SchemaStack) -> RefOr<schema::Schema> {
         schema::empty().into()
     }
 }
@@ -147,7 +199,7 @@ macro_rules! impl_to_schema {
     };
     (@impl_schema $($tt:tt)*) => {
         impl ToSchema for $($tt)* {
-            fn to_schema(_components: &mut Components) -> crate::RefOr<crate::schema::Schema> {
+            fn to_schema(_components: &mut Components, call_stack: SchemaStack) -> crate::RefOr<crate::schema::Schema> {
                  schema!( $($tt)* ).into()
             }
         }
@@ -182,7 +234,7 @@ impl_to_schema!(&str);
 impl_to_schema_primitive!(chrono::NaiveDate, chrono::Duration, chrono::NaiveDateTime);
 #[cfg(feature = "chrono")]
 impl<T: chrono::TimeZone> ToSchema for chrono::DateTime<T> {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+    fn to_schema(_components: &mut Components, _call_stack: SchemaStack) -> RefOr<schema::Schema> {
         schema!(#[inline] DateTime<T>).into()
     }
 }
@@ -202,41 +254,53 @@ impl_to_schema_primitive!(
     time::Duration
 );
 #[cfg(feature = "smallvec")]
-impl<T: ToSchema + smallvec::Array> ToSchema for smallvec::SmallVec<T> {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+impl<T: ToSchema + smallvec::Array + 'static> ToSchema for smallvec::SmallVec<T> {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline] smallvec::SmallVec<T>).into()
     }
 }
 #[cfg(feature = "indexmap")]
-impl<K: ToSchema, V: ToSchema> ToSchema for indexmap::IndexMap<K, V> {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+impl<K: ToSchema + 'static, V: ToSchema + 'static> ToSchema for indexmap::IndexMap<K, V> {
+    fn to_schema(_components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline] indexmap::IndexMap<K, V>).into()
     }
 }
 
-impl<T: ToSchema> ToSchema for Vec<T> {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+impl<T: ToSchema + 'static> ToSchema for Vec<T> {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline] Vec<T>).into()
     }
 }
 
-impl<T: ToSchema> ToSchema for LinkedList<T> {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+impl<T: ToSchema + 'static> ToSchema for LinkedList<T> {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline] LinkedList<T>).into()
     }
 }
 
-impl<T: ToSchema> ToSchema for [T] {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
-        schema!(
-            #[inline]
-            [T]
-        )
-        .into()
-    }
-}
-impl<T: ToSchema, const N: usize> ToSchema for [T; N] {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+// impl<T: ToSchema + 'static> ToSchema for [T] {
+//     fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+//         call_stack.push::<Self>();
+
+//         schema!(
+//             #[inline]
+//             [T]
+//         )
+//         .into()
+//     }
+// }
+impl<T: ToSchema + 'static, const N: usize> ToSchema for [T; N] {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(
             #[inline]
             [T; N]
@@ -245,88 +309,107 @@ impl<T: ToSchema, const N: usize> ToSchema for [T; N] {
     }
 }
 
-impl<T: ToSchema> ToSchema for &[T] {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
-        schema!(
-            #[inline]
-            &[T]
-        )
-        .into()
-    }
-}
+// impl<T: ToSchema + 'static> ToSchema for &[T] {
+//     fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+//         call_stack.push::<Self>();
 
-impl<T: ToSchema> ToSchema for Option<T> {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+//         schema!(
+//             #[inline]
+//             &[T]
+//         )
+//         .into()
+//     }
+// }
+
+impl<T: ToSchema + 'static> ToSchema for Option<T> {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline] Option<T>).into()
     }
 }
 
 impl<T> ToSchema for PhantomData<T> {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+    fn to_schema(_components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Object>();
+
         Schema::Object(Object::default()).into()
     }
 }
 
-impl<K: ToSchema, V: ToSchema> ToSchema for BTreeMap<K, V> {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+impl<K: ToSchema + 'static, V: ToSchema + 'static> ToSchema for BTreeMap<K, V> {
+    fn to_schema(_components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline]BTreeMap<K, V>).into()
     }
 }
 
-impl<K: ToSchema, V: ToSchema> ToSchema for HashMap<K, V> {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+impl<K: ToSchema + 'static, V: ToSchema + 'static> ToSchema for HashMap<K, V> {
+    fn to_schema(_components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         schema!(#[inline]HashMap<K, V>).into()
     }
 }
 
 impl ToSchema for StatusError {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         let symbol = std::any::type_name::<StatusError>().replace("::", ".");
         let schema = Schema::from(
             Object::new()
-                .property("code", u16::to_schema(components))
+                .property("code", u16::to_schema(components, SchemaStack::new()))
                 .required("code")
                 .required("name")
-                .property("name", String::to_schema(components))
+                .property("name", String::to_schema(components, SchemaStack::new()))
                 .required("brief")
-                .property("brief", String::to_schema(components))
+                .property("brief", String::to_schema(components, SchemaStack::new()))
                 .required("detail")
-                .property("detail", String::to_schema(components))
-                .property("cause", String::to_schema(components)),
+                .property("detail", String::to_schema(components, SchemaStack::new()))
+                .property("cause", String::to_schema(components, SchemaStack::new())),
         );
         components.schemas.insert(symbol.clone(), schema.into());
         crate::RefOr::Ref(crate::Ref::new(format!("#/components/schemas/{}", symbol)))
     }
 }
 impl ToSchema for salvo_core::Error {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
-        StatusError::to_schema(components)
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+        StatusError::to_schema(components, call_stack)
     }
 }
 
 impl<T, E> ToSchema for Result<T, E>
 where
-    T: ToSchema,
-    E: ToSchema,
+    T: ToSchema + 'static,
+    E: ToSchema + 'static,
 {
-    fn to_schema(components: &mut Components) -> RefOr<schema::Schema> {
+    fn to_schema(components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Self>();
+
         let symbol = std::any::type_name::<Self>().replace("::", ".");
         let schema = OneOf::new()
-            .item(T::to_schema(components))
-            .item(E::to_schema(components));
+            .item(T::to_schema(components, call_stack.clone()))
+            .item(E::to_schema(components, call_stack.clone()));
         components.schemas.insert(symbol.clone(), schema.into());
         crate::RefOr::Ref(crate::Ref::new(format!("#/components/schemas/{}", symbol)))
     }
 }
 
 impl ToSchema for serde_json::Value {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
+    fn to_schema(_components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<Object>();
+
         Schema::Object(Object::default()).into()
     }
 }
 impl ToSchema for serde_json::Map<String, serde_json::Value> {
-    fn to_schema(_components: &mut Components) -> RefOr<schema::Schema> {
-        schema!(#[inline]HashMap<K, V>).into()
+    fn to_schema(_components: &mut Components, mut call_stack: SchemaStack) -> RefOr<schema::Schema> {
+        call_stack.push::<HashMap<String, serde_json::Value>>();
+
+        schema!(#[inline]HashMap<String, serde_json::Value>).into()
     }
 }
 
@@ -442,7 +525,7 @@ pub trait ToParameter {
 /// impl ToRequestBody for MyPayload {
 ///     fn to_request_body(components: &mut Components) -> RequestBody {
 ///         RequestBody::new()
-///             .add_content("application/json", Content::new(MyPayload::to_schema(components)))
+///             .add_content("application/json", Content::new(MyPayload::to_schema(components, SchemaStack::new())))
 ///     }
 /// }
 /// impl EndpointArgRegister for MyPayload {
@@ -490,8 +573,10 @@ where
     fn to_responses(components: &mut Components) -> Responses {
         Responses::new().response(
             "200",
-            Response::new("Response json format data")
-                .add_content("application/json", Content::new(C::to_schema(components))),
+            Response::new("Response json format data").add_content(
+                "application/json",
+                Content::new(C::to_schema(components, SchemaStack::new())),
+            ),
         )
     }
 }
@@ -543,7 +628,10 @@ impl ToResponses for StatusError {
         for StatusError { code, brief, .. } in errors {
             responses.insert(
                 code.as_str(),
-                Response::new(brief).add_content("application/json", Content::new(StatusError::to_schema(components))),
+                Response::new(brief).add_content(
+                    "application/json",
+                    Content::new(StatusError::to_schema(components, SchemaStack::new())),
+                ),
             )
         }
         responses
@@ -581,10 +669,13 @@ pub trait ToResponse {
 
 impl<C> ToResponse for writing::Json<C>
 where
-    C: ToSchema,
+    C: ToSchema + 'static,
 {
     fn to_response(components: &mut Components) -> RefOr<Response> {
-        let schema = <C as ToSchema>::to_schema(components);
+        let schema = <C as ToSchema>::to_schema(
+            components,
+            SchemaStack::new_from_type::<Self>(),
+        );
         Response::new("Response with json format data")
             .add_content("application/json", Content::new(schema))
             .into()
@@ -604,68 +695,68 @@ mod tests {
         for (name, schema, value) in [
             (
                 "i8",
-                i8::to_schema(&mut components),
+                i8::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int32"}),
             ),
             (
                 "i16",
-                i16::to_schema(&mut components),
+                i16::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int32"}),
             ),
             (
                 "i32",
-                i32::to_schema(&mut components),
+                i32::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int32"}),
             ),
             (
                 "i64",
-                i64::to_schema(&mut components),
+                i64::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int64"}),
             ),
-            ("i128", i128::to_schema(&mut components), json!({"type": "integer"})),
-            ("isize", isize::to_schema(&mut components), json!({"type": "integer"})),
+            ("i128", i128::to_schema(&mut components, SchemaStack::new()), json!({"type": "integer"})),
+            ("isize", isize::to_schema(&mut components, SchemaStack::new()), json!({"type": "integer"})),
             (
                 "u8",
-                u8::to_schema(&mut components),
+                u8::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int32", "minimum": 0.0}),
             ),
             (
                 "u16",
-                u16::to_schema(&mut components),
+                u16::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int32", "minimum": 0.0}),
             ),
             (
                 "u32",
-                u32::to_schema(&mut components),
+                u32::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int32", "minimum": 0.0}),
             ),
             (
                 "u64",
-                u64::to_schema(&mut components),
+                u64::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "format": "int64", "minimum": 0.0}),
             ),
             (
                 "u128",
-                u128::to_schema(&mut components),
+                u128::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "minimum": 0.0}),
             ),
             (
                 "usize",
-                usize::to_schema(&mut components),
+                usize::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "integer", "minimum": 0.0 }),
             ),
-            ("bool", bool::to_schema(&mut components), json!({"type": "boolean"})),
-            ("str", str::to_schema(&mut components), json!({"type": "string"})),
-            ("String", String::to_schema(&mut components), json!({"type": "string"})),
-            ("char", char::to_schema(&mut components), json!({"type": "string"})),
+            ("bool", bool::to_schema(&mut components, SchemaStack::new()), json!({"type": "boolean"})),
+            ("str", str::to_schema(&mut components, SchemaStack::new()), json!({"type": "string"})),
+            ("String", String::to_schema(&mut components, SchemaStack::new()), json!({"type": "string"})),
+            ("char", char::to_schema(&mut components, SchemaStack::new()), json!({"type": "string"})),
             (
                 "f32",
-                f32::to_schema(&mut components),
+                f32::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "number", "format": "float"}),
             ),
             (
                 "f64",
-                f64::to_schema(&mut components),
+                f64::to_schema(&mut components, SchemaStack::new()),
                 json!({"type": "number", "format": "double"}),
             ),
         ] {

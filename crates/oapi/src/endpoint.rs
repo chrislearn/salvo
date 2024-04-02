@@ -3,7 +3,7 @@ use std::any::TypeId;
 use salvo_core::http::StatusCode;
 use salvo_core::{prelude::StatusError, writing};
 
-use crate::{Components, Operation, Response, ToResponse, ToResponses, ToSchema};
+use crate::{Components, SchemaStack, Operation, Response, ToResponse, ToResponses, ToSchema};
 
 /// Represents an endpoint.
 ///
@@ -35,7 +35,7 @@ pub trait EndpointOutRegister {
 
 impl<C> EndpointOutRegister for writing::Json<C>
 where
-    C: ToSchema,
+    C: ToSchema + 'static,
 {
     #[inline]
     fn register(components: &mut Components, operation: &mut Operation) {
@@ -118,7 +118,7 @@ impl EndpointOutRegister for &'static str {
     fn register(components: &mut Components, operation: &mut Operation) {
         operation.responses.insert(
             "200",
-            Response::new("Ok").add_content("text/plain", String::to_schema(components)),
+            Response::new("Ok").add_content("text/plain", String::to_schema(components, SchemaStack::new())),
         );
     }
 }
@@ -127,7 +127,7 @@ impl EndpointOutRegister for String {
     fn register(components: &mut Components, operation: &mut Operation) {
         operation.responses.insert(
             "200",
-            Response::new("Ok").add_content("text/plain", String::to_schema(components)),
+            Response::new("Ok").add_content("text/plain", String::to_schema(components, SchemaStack::new())),
         );
     }
 }
@@ -136,7 +136,7 @@ impl<'a> EndpointOutRegister for &'a String {
     fn register(components: &mut Components, operation: &mut Operation) {
         operation.responses.insert(
             "200",
-            Response::new("Ok").add_content("text/plain", String::to_schema(components)),
+            Response::new("Ok").add_content("text/plain", String::to_schema(components, SchemaStack::new())),
         );
     }
 }
