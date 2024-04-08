@@ -21,7 +21,7 @@ pub(crate) fn generate(input: Item) -> syn::Result<TokenStream> {
                 .collect::<Vec<_>>();
             let (impl_generics, ty_generics, where_clause) = sig.generics.split_for_impl();
 
-            let struct_def = if sig.generics.type_params().count() >  0 {
+            let struct_def = if sig.generics.type_params().count() > 0 {
                 quote! {
                     #vis struct #name #ty_generics #where_clause {
                         _phantom: std::marker::PhantomData #ty_generics,
