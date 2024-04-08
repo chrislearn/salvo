@@ -19,15 +19,30 @@ pub(crate) fn generate(input: Item) -> syn::Result<TokenStream> {
                 .filter(|attr| attr.path().is_ident("doc"))
                 .cloned()
                 .collect::<Vec<_>>();
+            let (impl_generics, ty_generics, where_clause) = sig.generics.split_for_impl();
 
+            let struct_def = if sig.generics.type_params().count() >  0 {
+                quote! {
+                    #vis struct #name #ty_generics #where_clause {
+                        _phantom: std::marker::PhantomData #ty_generics,
+                    }
+                }
+            } else {
+                quote! {
+                    #vis struct #name #ty_generics #where_clause;
+                }
+            };
+
+            let mut fsig = sig.clone();
+            fsig.generics = Default::default();
             let sdef = quote! {
                 #(#docs)*
                 #[allow(non_camel_case_types)]
                 #[derive(Debug)]
-                #vis struct #name;
-                impl #name {
+                #struct_def;
+                impl #impl_generics #name #ty_generics #where_clause {
                     #(#attrs)*
-                    #sig {
+                    #fsig {
                         #body
                     }
                 }
@@ -37,7 +52,7 @@ pub(crate) fn generate(input: Item) -> syn::Result<TokenStream> {
             Ok(quote! {
                 #sdef
                 #[#salvo::async_trait]
-                impl #salvo::Handler for #name {
+                impl #impl_generics #salvo::Handler for #name #ty_generics #where_clause {
                     #hfn
                 }
             })
