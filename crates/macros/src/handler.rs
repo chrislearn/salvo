@@ -19,7 +19,6 @@ pub(crate) fn generate(input: Item) -> syn::Result<TokenStream> {
                 .filter(|attr| attr.path().is_ident("doc"))
                 .cloned()
                 .collect::<Vec<_>>();
-            let (impl_generics, ty_generics, where_clause) = sig.generics.split_for_impl();
 
             let struct_def = if sig.generics.type_params().count() > 0 {
                 quote! {
@@ -39,10 +38,10 @@ pub(crate) fn generate(input: Item) -> syn::Result<TokenStream> {
                 #(#docs)*
                 #[allow(non_camel_case_types)]
                 #[derive(Debug)]
-                #struct_def;
-                impl #impl_generics #name #ty_generics #where_clause {
+                #vis struct #name;
+                impl #name {
                     #(#attrs)*
-                    #fsig {
+                    #sig {
                         #body
                     }
                 }
@@ -52,7 +51,7 @@ pub(crate) fn generate(input: Item) -> syn::Result<TokenStream> {
             Ok(quote! {
                 #sdef
                 #[#salvo::async_trait]
-                impl #impl_generics #salvo::Handler for #name #ty_generics #where_clause {
+                impl #salvo::Handler for #name {
                     #hfn
                 }
             })
