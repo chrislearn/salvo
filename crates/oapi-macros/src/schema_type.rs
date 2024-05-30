@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
@@ -5,12 +7,65 @@ use syn::{parse::Parse, Error, Ident, LitStr, Path};
 
 use crate::{DiagLevel, DiagResult, Diagnostic, TryToTokens};
 
-/// Tokenizes OpenAPI data type correctly according to the Rust type
-pub(crate) struct SchemaType<'a>(pub(crate) &'a syn::Path);
+/// Represents data type of [`Schema`].
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub(crate) enum SchemaTypeInner {
+    /// Generic schema type allows "properties" with custom types
+    Object,
+    /// Indicates string type of content.
+    String,
+    /// Indicates integer type of content.    
+    Integer,
+    /// Indicates floating point number type of content.
+    Number,
+    /// Indicates boolean type of content.
+    Boolean,
+    /// Indicates array type of content.
+    Array,
+    /// Null type. Used together with other type to indicate nullable values.
+    Null,
+}
 
-impl SchemaType<'_> {
+impl Display for SchemaTypeInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ty = match self {
+            Self::Object => "utoipa::openapi::schema::Type::Object",
+            Self::String => "utoipa::openapi::schema::Type::String",
+            Self::Integer => "utoipa::openapi::schema::Type::Integer",
+            Self::Number => "utoipa::openapi::schema::Type::Number",
+            Self::Boolean => "utoipa::openapi::schema::Type::Boolean",
+            Self::Array => "utoipa::openapi::schema::Type::Array",
+            Self::Null => "utoipa::openapi::schema::Type::Null",
+        };
+        write!(f, "{ty}");
+        Ok(())
+    }
+}
+
+impl ToTokens for SchemaTypeInner {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.to_string().to_tokens(tokens);
+    }
+}
+
+/// Tokenizes OpenAPI data type correctly according to the Rust type
+// pub struct SchemaType<'a>(pub &'a syn::Path);
+pub struct SchemaType<'a> {
+    path: &'a syn::Path,
+    format: SchemaFormat<'a>,
+    nullable: bool,
+}
+impl<'a> SchemaType<'a> {
+    pub fn new(path: &'a syn::Path, nullable: bool) -> SchemaType<'a> {
+        Self {
+            path,
+            format: SchemaFormat::from(path),
+            nullable,
+        }
+    }
+
     fn last_segment_to_string(&self) -> String {
-        self.0
+        self.path
             .segments
             .last()
             .expect("Expected at least one segment is_integer")
@@ -20,7 +75,7 @@ impl SchemaType<'_> {
 
     /// Check whether type is known to be primitive in which case returns true.
     pub(crate) fn is_primitive(&self) -> bool {
-        let SchemaType(path) = self;
+        let SchemaType { path, .. } = self;
         let last_segment = match path.segments.last() {
             Some(segment) => segment,
             None => return false,
@@ -140,46 +195,63 @@ fn is_primitive(name: &str) -> bool {
 impl TryToTokens for SchemaType<'_> {
     fn try_to_tokens(&self, tokens: &mut TokenStream) -> DiagResult<()> {
         let oapi = crate::oapi_crate();
-        let last_segment = self.0.segments.last().ok_or_else(|| {
+        let last_segment = self.path.segments.last().ok_or_else(|| {
             Diagnostic::spanned(
-                self.0.span(),
+                self.path.span(),
                 DiagLevel::Error,
                 "schema type should have at least one segment in the path",
             )
         })?;
         let name = &*last_segment.ident.to_string();
 
-        match name {
-            "String" | "str" | "char" => tokens.extend(quote! {#oapi::oapi::SchemaType::String}),
-            "bool" => tokens.extend(quote! { #oapi::oapi::SchemaType::Boolean }),
+        let inner_type = match name {
+            "String" | "str" | "char" => SchemaTypeInner::String,
+            "bool" => SchemaTypeInner::Boolean,
             "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
-                tokens.extend(quote! { #oapi::oapi::SchemaType::Integer })
+                SchemaTypeInner::Integer
             }
-            "f32" | "f64" => tokens.extend(quote! { #oapi::oapi::SchemaType::Number }),
+            "f32" | "f64" => SchemaTypeInner::Number,
             #[cfg(feature = "chrono")]
-            "DateTime" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
-            #[cfg(feature = "chrono")]
-            "NaiveDateTime" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
-            #[cfg(feature = "chrono")]
-            "NaiveDate" => tokens.extend(quote!(#oapi::oapi::SchemaType::String)),
+            "DateTime" | "NaiveDateTime" | "NaiveDate" | "NaiveTime" => SchemaTypeInner::String,
             #[cfg(any(feature = "chrono", feature = "time"))]
-            "Date" | "Duration" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
-            #[cfg(all(feature = "decimal", feature = "decimal-float"))]
-            "Decimal" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
-            #[cfg(all(feature = "decimal", not(feature = "decimal-float")))]
-            "Decimal" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
-            #[cfg(all(not(feature = "decimal"), feature = "decimal-float"))]
-            "Decimal" => tokens.extend(quote! { #oapi::oapi::SchemaType::Number }),
+            "Date" | "Duration" => SchemaTypeInner::String,
+            #[cfg(feature = "decimal")]
+            "Decimal" => SchemaTypeInner::String,
+            #[cfg(feature = "decimal_float")]
+            "Decimal" => SchemaTypeInner::Number,
             #[cfg(feature = "url")]
-            "Url" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
+            "Url" => SchemaTypeInner::String,
             #[cfg(feature = "ulid")]
-            "Ulid" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
+            "Ulid" => SchemaTypeInner::String,
             #[cfg(feature = "uuid")]
-            "Uuid" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
+            "Uuid" => SchemaTypeInner::String,
             #[cfg(feature = "time")]
-            "PrimitiveDateTime" | "OffsetDateTime" => tokens.extend(quote! { #oapi::oapi::SchemaType::String }),
-            _ => tokens.extend(quote! { #oapi::oapi::SchemaType::Object }),
+            "PrimitiveDateTime" | "OffsetDateTime" => SchemaTypeInner::String,
+            _ => SchemaTypeInner::Object,
         };
+        let schema_type = if self.nullable {
+            quote! {
+                .schema_type(#oapi::oapi::schema::SchemaType::from_iter([#inner_type, #oapi::oapi::schema::Type::Null]));
+            }
+        } else {
+            quote! {
+                .schema_type(#oapi::oapi::schema::SchemaType::new(#inner_type));
+            }
+        };
+        let format = if self.format.is_known_format() {
+            let format = &self.format;
+            Some(quote! {
+                .format(#format)
+            })
+        } else {
+            None
+        };
+
+        tokens.extend(quote! {
+            #oapi::oapi::schema::Object::new()
+                #schema_type
+                #format
+        });
         Ok(())
     }
 }
@@ -187,40 +259,40 @@ impl TryToTokens for SchemaType<'_> {
 /// Either Rust type component variant or enum variant schema variant.
 #[derive(Clone, Debug)]
 pub(crate) enum SchemaFormat<'c> {
-    /// [`salvo_oapi::schema::SchemaFormat`] enum variant schema format.
-    Variant(Variant),
+    /// [`utoipa::openapi::schema::SchemaFormat`] enum variant schema format.
+    ExplicitKnownFormat(ExplicitKnownFormat),
     /// Rust type schema format.
-    Type(Type<'c>),
+    RustTypeKnownFormat(RustTypeKnownFormat<'c>),
 }
 
 impl SchemaFormat<'_> {
     pub(crate) fn is_known_format(&self) -> bool {
         match self {
-            Self::Type(ty) => ty.is_known_format(),
-            Self::Variant(_) => true,
+            Self::RustTypeKnownFormat(ty) => ty.is_known_format(),
+            Self::ExplicitKnownFormat(_) => true,
         }
     }
 }
 
 impl<'a> From<&'a Path> for SchemaFormat<'a> {
     fn from(path: &'a Path) -> Self {
-        Self::Type(Type(path))
+        Self::RustTypeKnownFormat(RustTypeKnownFormat(path))
     }
 }
 
 impl Parse for SchemaFormat<'_> {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(Self::Variant(input.parse()?))
+        Ok(Self::ExplicitKnownFormat(input.parse()?))
     }
 }
 
 impl TryToTokens for SchemaFormat<'_> {
     fn try_to_tokens(&self, tokens: &mut TokenStream) -> DiagResult<()> {
         match self {
-            Self::Type(ty) => {
+            Self::RustTypeKnownFormat(ty) => {
                 ty.try_to_tokens(tokens)?;
             }
-            Self::Variant(variant) => variant.to_tokens(tokens),
+            Self::ExplicitKnownFormat(variant) => variant.to_tokens(tokens),
         }
         Ok(())
     }
@@ -228,9 +300,9 @@ impl TryToTokens for SchemaFormat<'_> {
 
 /// Tokenizes OpenAPI data type format correctly by given Rust type.
 #[derive(Clone, Debug)]
-pub(crate) struct Type<'a>(&'a syn::Path);
+pub struct RustTypeKnownFormat<'a>(&'a syn::Path);
 
-impl Type<'_> {
+impl RustTypeKnownFormat<'_> {
     /// Check is the format know format. Known formats can be used within `quote!{...}` statements.
     pub(crate) fn is_known_format(&self) -> bool {
         let last_segment = match self.0.segments.last() {
@@ -307,7 +379,7 @@ fn is_known_format(name: &str) -> bool {
     )
 }
 
-impl TryToTokens for Type<'_> {
+impl TryToTokens for RustTypeKnownFormat<'_> {
     fn try_to_tokens(&self, tokens: &mut TokenStream) -> DiagResult<()> {
         let oapi = crate::oapi_crate();
         let last_segment = self.0.segments.last().ok_or_else(|| {
@@ -365,7 +437,7 @@ impl TryToTokens for Type<'_> {
 
 /// [`Parse`] and [`ToTokens`] implementation for [`salvo_oapi::schema::SchemaFormat`].
 #[derive(Clone, Debug)]
-pub(crate) enum Variant {
+pub(crate) enum ExplicitKnownFormat {
     Int32,
     Int64,
     Float,
@@ -384,7 +456,7 @@ pub(crate) enum Variant {
     Custom(String),
 }
 
-impl Parse for Variant {
+impl Parse for ExplicitKnownFormat {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         const FORMATS: [&str; 12] = [
             "Int32", "Int64", "Float", "Double", "Byte", "Binary", "Date", "DateTime", "Password", "Ulid", "Uuid",
@@ -441,7 +513,7 @@ impl Parse for Variant {
     }
 }
 
-impl ToTokens for Variant {
+impl ToTokens for ExplicitKnownFormat {
     fn to_tokens(&self, stream: &mut proc_macro2::TokenStream) {
         let oapi = crate::oapi_crate();
         match self {

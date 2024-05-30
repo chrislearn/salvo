@@ -4,7 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Object, RefOr, Schema, SchemaType};
+use super::schema::SchemaType;
+use super::{Object, RefOr, Schema, Type};
 
 /// Implements [OpenAPI Header Object][header] for response headers.
 ///
@@ -60,7 +61,7 @@ impl Default for Header {
     fn default() -> Self {
         Self {
             description: Default::default(),
-            schema: Object::with_type(SchemaType::String).into(),
+            schema: Object::with_type(SchemaType::new(Type::String)).into(),
         }
     }
 }

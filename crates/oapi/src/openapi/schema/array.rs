@@ -31,6 +31,7 @@ pub struct Array {
 
     /// Example shown in UI of the value for richer documentation.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated]
     pub example: Option<Value>,
 
     /// Default value which is provided when user has not provided the input in Swagger UI.
@@ -53,17 +54,13 @@ pub struct Array {
     /// Xml format of the array.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub xml: Option<Xml>,
-
-    /// Set `true` to allow `"null"` to be used as value for given type.
-    #[serde(default, skip_serializing_if = "super::is_false")]
-    pub nullable: bool,
 }
 
 impl Default for Array {
     fn default() -> Self {
         Self {
             title: Default::default(),
-            schema_type: SchemaType::Array,
+            schema_type: SchemaType::new(Type::Array),
             unique_items: bool::default(),
             items: Default::default(),
             description: Default::default(),
@@ -73,7 +70,6 @@ impl Default for Array {
             max_items: Default::default(),
             min_items: Default::default(),
             xml: Default::default(),
-            nullable: Default::default(),
         }
     }
 }
@@ -119,6 +115,7 @@ impl Array {
     }
 
     /// Add or change example shown in UI of the value for richer documentation.
+    #[deprecated]
     pub fn example(mut self, example: Value) -> Self {
         self.example = Some(example);
         self
@@ -151,12 +148,6 @@ impl Array {
     /// Set [`Xml`] formatting for [`Array`].
     pub fn xml(mut self, xml: Xml) -> Self {
         self.xml = Some(xml);
-        self
-    }
-
-    /// Add or change nullable flag for [Object][crate::Object].
-    pub fn nullable(mut self, nullable: bool) -> Self {
-        self.nullable = nullable;
         self
     }
 }

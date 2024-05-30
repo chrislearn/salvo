@@ -27,7 +27,7 @@ pub struct Object {
     // pub origin_type_id: Option<TypeId>,
     /// Type of [`Object`] e.g. [`SchemaType::Object`] for `object` and [`SchemaType::String`] for
     /// `string` types.
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if="SchemaType::is_any_value")]
     pub schema_type: SchemaType,
 
     /// Changes the [`Object`] name.
@@ -77,7 +77,12 @@ pub struct Object {
 
     /// Example shown in UI of the value for richer documentation.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated]
     pub example: Option<Value>,
+
+    /// Vec of examples of [`Object`] shown in UI for richer documentation.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<Value>,
 
     /// Write only property will be only sent in _write_ requests like _POST, PUT_.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,10 +95,6 @@ pub struct Object {
     /// Additional [`Xml`] formatting of the [`Object`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub xml: Option<Xml>,
-
-    /// Set `true` to allow `"null"` to be used as value for given type.
-    #[serde(default, skip_serializing_if = "super::is_false")]
-    pub nullable: bool,
 
     /// Must be a number strictly greater than `0`. Numeric value is considered valid if value
     /// divided by the _`multiple_of`_ value results an integer.
@@ -234,9 +235,15 @@ impl Object {
     }
 
     /// Add or change example shown in UI of the value for richer documentation.
+    #[deprecated]
     pub fn example(mut self, example: Value) -> Self {
         self.example = Some(example);
         self
+    }
+
+    /// Vec of examples of [`Object`] shown in UI for richer documentation.
+    pub fn examples<I: IntoIterator<Item = V>, V: Into<Value>>(mut self, examples: I) -> Self {
+        set_value!(self examples examples.into_iter().map(Into::into).collect())
     }
 
     /// Add or change write only flag for [`Object`].
@@ -254,12 +261,6 @@ impl Object {
     /// Add or change additional [`Xml`] formatting of the [`Object`].
     pub fn xml(mut self, xml: Xml) -> Self {
         self.xml = Some(xml);
-        self
-    }
-
-    /// Add or change nullable flag for [`Object`].
-    pub fn nullable(mut self, nullable: bool) -> Self {
-        self.nullable = nullable;
         self
     }
 

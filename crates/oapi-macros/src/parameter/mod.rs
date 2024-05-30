@@ -14,7 +14,7 @@ use crate::{
     component::{self, ComponentSchema},
     feature::{
         parse_features, AllowReserved, Description, Example, ExclusiveMaximum, ExclusiveMinimum, Explode, Feature,
-        Format, MaxItems, MaxLength, Maximum, MinItems, MinLength, Minimum, MultipleOf, Nullable, Pattern, ReadOnly,
+        Format, MaxItems, MaxLength, Maximum, MinItems, MinLength, Minimum, MultipleOf, Pattern, ReadOnly,
         Style, TryToTokensExt, WriteOnly, XmlAttr,
     },
     operation::InlineType,

@@ -13,7 +13,7 @@ use crate::doc_comment::CommentAttributes;
 use crate::feature::{
     self, impl_into_inner, impl_merge, parse_features, pop_feature, pop_feature_as_inner, AdditionalProperties,
     AllowReserved, DefaultStyle, Example, ExclusiveMaximum, ExclusiveMinimum, Explode, Feature, FeaturesExt, Format,
-    Inline, MaxItems, MaxLength, Maximum, Merge, MinItems, MinLength, Minimum, MultipleOf, Nullable, Pattern, ReadOnly,
+    Inline, MaxItems, MaxLength, Maximum, Merge, MinItems, MinLength, Minimum, MultipleOf, Pattern, ReadOnly,
     Rename, RenameAll, SchemaWith, Style, ToParametersNames, TryToTokensExt, WriteOnly, XmlAttr,
 };
 use crate::parameter::ParameterIn;

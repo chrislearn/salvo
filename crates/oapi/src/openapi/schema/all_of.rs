@@ -30,16 +30,13 @@ pub struct AllOf {
 
     /// Example shown in UI of the value for richer documentation.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated]
     pub example: Option<Value>,
 
     /// Optional discriminator field can be used to aid deserialization, serialization and validation of a
     /// specific schema.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub discriminator: Option<Discriminator>,
-
-    /// Set `true` to allow `"null"` to be used as value for given type.
-    #[serde(default, skip_serializing_if = "super::is_false")]
-    pub nullable: bool,
 }
 
 impl AllOf {
@@ -94,6 +91,7 @@ impl AllOf {
     }
 
     /// Add or change example shown in UI of the value for richer documentation.
+    #[deprecated]
     pub fn example(mut self, example: Value) -> Self {
         self.example = Some(example);
         self
@@ -102,12 +100,6 @@ impl AllOf {
     /// Add or change discriminator field of the composite [`AllOf`] type.
     pub fn discriminator(mut self, discriminator: Discriminator) -> Self {
         self.discriminator = Some(discriminator);
-        self
-    }
-
-    /// Add or change nullable flag for [Object][crate::Object].
-    pub fn nullable(mut self, nullable: bool) -> Self {
-        self.nullable = nullable;
         self
     }
 }

@@ -16,6 +16,10 @@ pub struct OneOf {
     #[serde(rename = "oneOf")]
     pub items: Vec<RefOr<Schema>>,
 
+    /// Type of [`OneOf`] e.g. `SchemaType::new(Type::Object)` for `object`.
+    #[serde(rename = "type", skip_serializing_if = "OneOf::not_a_schema")]
+    pub schema_type: Option<SchemaType>,
+
     /// Changes the [`OneOf`] title.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -30,22 +34,27 @@ pub struct OneOf {
 
     /// Example shown in UI of the value for richer documentation.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[deprecated]
     pub example: Option<Value>,
 
     /// Optional discriminator field can be used to aid deserialization, serialization and validation of a
     /// specific schema.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub discriminator: Option<Discriminator>,
-
-    /// Set `true` to allow `"null"` to be used as value for given type.
-    #[serde(default, skip_serializing_if = "super::is_false")]
-    pub nullable: bool,
 }
 
 impl OneOf {
     /// Construct a new empty [`OneOf`]. This is effectively same as calling [`OneOf::default`].
     pub fn new() -> Self {
         Default::default()
+    }
+
+    fn not_a_schema(&self) -> bool {
+        match self.schema_type {
+            None => true,
+            Some(SchemaType::AnyValue) => true,
+            _ => false,
+        }
     }
 
     /// Construct a new [`OneOf`] component with given capacity.
@@ -75,6 +84,12 @@ impl OneOf {
         self
     }
 
+    /// Add or change type of the oneof e.g `SchemaType::new(Type::String)`.
+    pub fn schema_type(mut self, schema_type: Option<SchemaType>) -> Self {
+        self.schema_type = schema_type;
+        self
+    }
+
     /// Add or change the title of the [`OneOf`].
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
@@ -94,6 +109,7 @@ impl OneOf {
     }
 
     /// Add or change example shown in UI of the value for richer documentation.
+    #[deprecated]
     pub fn example(mut self, example: Value) -> Self {
         self.example = Some(example);
         self
@@ -102,12 +118,6 @@ impl OneOf {
     /// Add or change discriminator field of the composite [`OneOf`] type.
     pub fn discriminator(mut self, discriminator: Discriminator) -> Self {
         self.discriminator = Some(discriminator);
-        self
-    }
-
-    /// Add or change nullable flag for [Object][crate::Object].
-    pub fn nullable(mut self, nullable: bool) -> Self {
-        self.nullable = nullable;
         self
     }
 }

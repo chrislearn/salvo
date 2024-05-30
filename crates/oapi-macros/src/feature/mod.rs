@@ -78,7 +78,6 @@ pub(crate) enum Feature {
     Name(Name),
     Title(Title),
     Aliases(Aliases),
-    Nullable(Nullable),
     Rename(Rename),
     RenameAll(RenameAll),
     Style(Style),

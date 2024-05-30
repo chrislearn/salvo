@@ -17,6 +17,7 @@ impl FlattenedMapSchema {
             description,
             deprecated,
             object_name,
+            nullable,
         }: ComponentSchemaProps,
     ) -> DiagResult<Self> {
         let mut tokens = TokenStream::new();
@@ -27,9 +28,9 @@ impl FlattenedMapSchema {
             .pop_by(|feature| matches!(feature, Feature::Example(_)))
             .map(|f| f.try_to_token_stream())
             .transpose()?;
-        let nullable = pop_feature!(features => Feature::Nullable(_))
-            .map(|f| f.try_to_token_stream())
-            .transpose()?;
+        // let nullable = pop_feature!(features => Feature::Nullable(_))
+        //     .map(|f| f.try_to_token_stream())
+        //     .transpose()?;
         let default = pop_feature!(features => Feature::Default(_))
             .map(|f| f.try_to_token_stream())
             .transpose()?;
@@ -38,17 +39,20 @@ impl FlattenedMapSchema {
         // additionalProperties denoting the type
         // maps have 2 child schemas and we are interested the second one of them
         // which is used to determine the additional properties
+        let child = type_tree
+            .children
+            .as_ref()
+            .expect("ComponentSchema Map type should have children")
+            .iter()
+            .nth(1)
+            .expect("ComponentSchema Map type should have 2 child");
         let schema_property = ComponentSchema::new(ComponentSchemaProps {
-            type_tree: type_tree
-                .children
-                .as_ref()
-                .expect("`ComponentSchema` Map type should have children")
-                .get(1)
-                .expect("`ComponentSchema` Map type should have 2 child"),
+            type_tree: child,
             features: Some(features),
             description: None,
             deprecated: None,
             object_name,
+            nullable: child.is_option() || nullable,
         })?;
 
         tokens.extend(quote! {
@@ -59,7 +63,6 @@ impl FlattenedMapSchema {
         });
 
         example.to_tokens(&mut tokens);
-        nullable.to_tokens(&mut tokens);
 
         Ok(Self { tokens })
     }

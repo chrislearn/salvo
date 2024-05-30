@@ -213,12 +213,14 @@ impl<'t> TypeTree<'t> {
 
     fn convert(path: &'t Path, last_segment: &'t PathSegment) -> TypeTree<'t> {
         let generic_type = Self::get_generic_type(last_segment);
-        let is_primitive = SchemaType(path).is_primitive();
+        let schema_type = SchemaType::new(path, false);
 
         Self {
             path: Some(Cow::Borrowed(path)),
-            value_type: if is_primitive {
+            value_type: if schema_type.is_primitive() {
                 ValueType::Primitive
+            } else if schema_type.is_value() {
+                ValueType::Value
             } else {
                 ValueType::Object
             },

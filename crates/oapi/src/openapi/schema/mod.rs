@@ -115,7 +115,12 @@ impl Schemas {
 /// Can be used in places where an item can be serialized as `null`. This is used with unit type
 /// enum variants and tuple unit types.
 pub fn empty() -> Schema {
-    Schema::Object(Object::new().nullable(true).default_value(serde_json::Value::Null))
+    Schema::Object(
+        Object::new()
+            .schema_type(SchemaType::AnyValue)
+            .nullable(true)
+            .default_value(serde_json::Value::Null),
+    )
 }
 
 /// Is super type for [OpenAPI Schema Object][schemas]. Schema is reusable resource what can be
@@ -299,31 +304,84 @@ impl ToArray for RefOr<Schema> {}
 
 /// Represents data type of [`Schema`].
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[serde(untagged)]
 pub enum SchemaType {
-    /// Used with [`Object`]. Objects always have
-    /// _schema_type_ [`SchemaType::Object`].
-    Object,
-    /// Indicates string type of content. Used with [`Object`] on a `string`
-    /// field.
-    String,
-    /// Indicates integer type of content. Used with [`Object`] on a `number`
-    /// field.
-    Integer,
-    /// Indicates floating point number type of content. Used with
-    /// [`Object`] on a `number` field.
-    Number,
-    /// Indicates boolean type of content. Used with [`Object`] on
-    /// a `bool` field.
-    Boolean,
-    /// Used with [`Array`]. Indicates array type of content.
-    Array,
+    /// Single type known from OpenAPI spec 3.0
+    Type(Type),
+    /// Multiple types rendered as [`slice`]
+    Array(Vec<Type>),
+    /// Type that is considred typeless. _`AnyValue`_ will omit the type definition from the schema
+    /// making it to accept any type possible.
+    AnyValue,
 }
 
 impl Default for SchemaType {
     fn default() -> Self {
-        Self::Object
+        Self::Type(Type::default())
     }
+}
+impl SchemaType {
+    /// Instantiate new [`SchemaType`] of given [`Type`]
+    ///
+    /// Method accpets one argument `type` to create [`SchemaType`] for.
+    ///
+    /// # Examples
+    ///
+    /// _**Create string [`SchemaType`]**_
+    /// ```rust
+    /// # use utoipa::openapi::schema{SchemaType, Type};
+    /// let ty = SchemaType::new(Type::String);
+    /// ```
+    pub fn new(r#type: Type) -> Self {
+        Self::Type(r#type)
+    }
+
+    /// Instantiate new [`SchemaType`] from interator of [`Type`]s. This will create multi type
+    /// [`SchemaType`] from iterator of types.
+    ///
+    /// Method accepts one argument `types` an iterator of [`Type`]s to create _SchemaType_ for.
+    ///
+    /// # Examples
+    ///
+    /// _**Create nullable string [`SchemaType`]**_
+    /// ```rust
+    /// # use utoipa::openapi::schema{SchemaType, Type};
+    /// let ty = SchemaType::from_iter([Type::String, Type::Null]);
+    /// ```
+    pub fn from_iter<I: IntoIterator<Item = Type>>(types: I) -> Self {
+        Self::Array(types.into_iter().collect())
+    }
+
+    pub fn is_any_value(&self) -> bool {
+        matches!(self, Self::AnyValue)
+    }
+}
+
+/// Represents data type of [`Schema`].
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+#[serde(rename_all = "lowercase")]
+pub enum Type {
+    /// Used with [`Object`] and [`ObjectBuilder`]. Objects always have
+    /// _schema_type_ [`SchemaType::Object`].
+    #[default]
+    Object,
+    /// Indicates string type of content. Used with [`Object`] and [`ObjectBuilder`] on a `string`
+    /// field.
+    String,
+    /// Indicates integer type of content. Used with [`Object`] and [`ObjectBuilder`] on a `number`
+    /// field.
+    Integer,
+    /// Indicates floating point number type of content. Used with
+    /// [`Object`] and [`ObjectBuilder`] on a `number` field.
+    Number,
+    /// Indicates boolean type of content. Used with [`Object`] and [`ObjectBuilder`] on
+    /// a `bool` field.
+    Boolean,
+    /// Used with [`Array`] and [`ArrayBuilder`]. Indicates array type of content.
+    Array,
+    /// Null type. Used together with other type to indicate nullable values.
+    Null,
 }
 
 /// Additional format for [`SchemaType`] to fine tune the data type used. If the **format** is not
@@ -421,7 +479,7 @@ mod tests {
                             .property(
                                 "id",
                                 Object::new()
-                                    .schema_type(SchemaType::Integer)
+                                    .schema_type(SchemaType::new(Type::Integer))
                                     .format(SchemaFormat::KnownFormat(KnownFormat::Int32))
                                     .description("Id of credential")
                                     .default_value(json!(1i32)),
@@ -429,19 +487,19 @@ mod tests {
                             .property(
                                 "name",
                                 Object::new()
-                                    .schema_type(SchemaType::String)
+                                    .schema_type(SchemaType::new(Type::String))
                                     .description("Name of credential"),
                             )
                             .property(
                                 "status",
                                 Object::new()
-                                    .schema_type(SchemaType::String)
+                                    .schema_type(SchemaType::new(Type::String))
                                     .default_value(json!("Active"))
                                     .description("Credential status")
                                     .enum_values(["Active", "NotActive", "Locked", "Expired"]),
                             )
                             .property("history", Array::new(Ref::from_schema_name("UpdateHistory")))
-                            .property("tags", Object::with_type(SchemaType::String).to_array()),
+                            .property("tags", Object::with_type(SchemaType::new(Type::String)).to_array()),
                     ),
                 ),
         );
@@ -497,7 +555,7 @@ mod tests {
             .property(
                 "id",
                 Object::new()
-                    .schema_type(SchemaType::Integer)
+                .schema_type(SchemaType::new(Type::Integer))
                     .format(SchemaFormat::KnownFormat(KnownFormat::Int32))
                     .description("Id of credential")
                     .default_value(json!(1i32)),
@@ -505,19 +563,19 @@ mod tests {
             .property(
                 "name",
                 Object::new()
-                    .schema_type(SchemaType::String)
+                .schema_type(SchemaType::new(Type::String))
                     .description("Name of credential"),
             )
             .property(
                 "status",
                 Object::new()
-                    .schema_type(SchemaType::String)
+                .schema_type(SchemaType::new(Type::String))
                     .default_value(json!("Active"))
                     .description("Credential status")
                     .enum_values(["Active", "NotActive", "Locked", "Expired"]),
             )
             .property("history", Array::new(Ref::from_schema_name("UpdateHistory")))
-            .property("tags", Object::with_type(SchemaType::String).to_array());
+            .property("tags",  Object::with_type(SchemaType::new(Type::String)).to_array());
 
         #[cfg(not(feature = "preserve_order"))]
         assert_eq!(
@@ -529,7 +587,7 @@ mod tests {
     // Examples taken from https://spec.openapis.org/oas/latest.html#model-with-map-dictionary-properties
     #[test]
     fn test_additional_properties() {
-        let json_value = Object::new().additional_properties(Object::new().schema_type(SchemaType::String));
+        let json_value = Object::new().additional_properties(Object::new().schema_type(SchemaType::new(Type::String)));
         assert_json_eq!(
             json_value,
             json!({
@@ -540,7 +598,7 @@ mod tests {
             })
         );
 
-        let json_value = Object::new().additional_properties(Array::new(Object::new().schema_type(SchemaType::Number)));
+        let json_value = Object::new().additional_properties(Array::new(Object::new().schema_type(SchemaType::new(Type::Number)));
         assert_json_eq!(
             json_value,
             json!({
@@ -602,14 +660,14 @@ mod tests {
             Object::new().property(
                 "id",
                 Object::new()
-                    .schema_type(SchemaType::Integer)
+                .schema_type(SchemaType::new(Type::Integer))
                     .format(SchemaFormat::KnownFormat(KnownFormat::Int32))
                     .description("Id of credential")
                     .default_value(json!(1i32)),
             ),
         );
 
-        assert!(matches!(array.schema_type, SchemaType::Array));
+        assert!(matches!(array.schema_type, SchemaType::Type(Type::Array)));
     }
 
     #[test]
@@ -618,14 +676,14 @@ mod tests {
             Object::new().property(
                 "id",
                 Object::new()
-                    .schema_type(SchemaType::Integer)
+                .schema_type(SchemaType::new(Type::Integer))
                     .format(SchemaFormat::KnownFormat(KnownFormat::Int32))
                     .description("Id of credential")
                     .default_value(json!(1i32)),
             ),
         );
 
-        assert!(matches!(array.schema_type, SchemaType::Array));
+        assert!(matches!(array.schema_type, SchemaType::Type(Type::Array)));
     }
 
     #[test]
@@ -635,7 +693,7 @@ mod tests {
                 "Comp",
                 Schema::from(
                     Object::new()
-                        .property("name", Object::new().schema_type(SchemaType::String))
+                        .property("name", Object::new().schema_type(SchemaType::new(Type::String)))
                         .required("name"),
                 ),
             )])
@@ -657,7 +715,7 @@ mod tests {
     #[test]
     fn reserialize_deserialized_object_component() {
         let prop = Object::new()
-            .property("name", Object::new().schema_type(SchemaType::String))
+            .property("name", Object::new().schema_type(SchemaType::new(Type::String)))
             .required("name");
 
         let serialized_components = serde_json::to_string(&prop).unwrap();
@@ -671,7 +729,7 @@ mod tests {
 
     #[test]
     fn reserialize_deserialized_property() {
-        let prop = Object::new().schema_type(SchemaType::String);
+        let prop = Object::new().schema_type(SchemaType::new(Type::String));
 
         let serialized_components = serde_json::to_string(&prop).unwrap();
         let deserialized_components: Object = serde_json::from_str(serialized_components.as_str()).unwrap();
@@ -856,7 +914,7 @@ mod tests {
     fn serialize_deserialize_schema_with_additional_properties_object() {
         let schema = Schema::Object(Object::new().property(
             "map",
-            Object::new().additional_properties(Object::new().property("name", Object::with_type(SchemaType::String))),
+            Object::new().additional_properties(Object::new().property("name", Object::with_type(SchemaType::new(Type::String)))),
         ));
 
         let json_str = serde_json::to_string(&schema).unwrap();
@@ -945,5 +1003,15 @@ mod tests {
                 "type": "object",
             })
         )
+    }
+
+    #[test]
+    fn foobar() {
+        let a = ObjectBuilder::new()
+            .schema_type(SchemaType::from_iter([Type::Object, Type::Null]))
+            .build();
+
+        println!("foobar", &a);
+        dbg!(&a);
     }
 }

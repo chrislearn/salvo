@@ -259,30 +259,6 @@ impl From<Title> for Feature {
 }
 impl_get_name!(Title = "title");
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Nullable(pub(crate) bool);
-impl Nullable {
-    pub(crate) fn new() -> Self {
-        Self(true)
-    }
-}
-impl Parse for Nullable {
-    fn parse(input: syn::parse::ParseStream, _: Ident) -> syn::Result<Self> {
-        parse_utils::parse_bool_or_true(input).map(Self)
-    }
-}
-impl ToTokens for Nullable {
-    fn to_tokens(&self, stream: &mut proc_macro2::TokenStream) {
-        stream.extend(self.0.to_token_stream())
-    }
-}
-impl From<Nullable> for Feature {
-    fn from(value: Nullable) -> Self {
-        Feature::Nullable(value)
-    }
-}
-impl_get_name!(Nullable = "nullable");
-
 #[derive(Clone, Debug)]
 pub(crate) struct Rename(pub(crate) String);
 impl Rename {

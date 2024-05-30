@@ -38,7 +38,7 @@ pub use self::{
     path::{PathItem, PathItemType, Paths},
     request_body::RequestBody,
     response::{Response, Responses},
-    schema::{Array, Discriminator, KnownFormat, Object, Ref, Schema, SchemaFormat, SchemaType, Schemas, ToArray},
+    schema::{Array, Discriminator, KnownFormat, Object, Ref, Schema, SchemaFormat, SchemaType, Schemas, ToArray, Type},
     security::{SecurityRequirement, SecurityScheme},
     server::{Server, ServerVariable, ServerVariables, Servers},
     tag::Tag,
@@ -453,16 +453,63 @@ impl Handler for OpenApi {
 /// Represents available [OpenAPI versions][version].
 ///
 /// [version]: <https://spec.openapis.org/oas/latest.html#versions>
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub enum OpenApiVersion {
-    /// Will serialize to `3.1.0` the latest from 3.0 serde.
+    /// Serliazlizes to 3.1.0
     #[serde(rename = "3.1.0")]
-    Version3,
+    Version31,
 }
 
 impl Default for OpenApiVersion {
     fn default() -> Self {
-        Self::Version3
+        Self::Version31
+    }
+}
+
+impl<'de> Deserialize<'de> for OpenApiVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct VersionVisitor;
+
+        impl<'v> Visitor<'v> for VersionVisitor {
+            type Value = OpenApiVersion;
+
+            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                formatter.write_str("a version string in 3.1.x format")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.visit_string(v.to_string())
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let version = v
+                    .split(".")
+                    .into_iter()
+                    .map(|digit| digit.parse::<i8>())
+                    .flatten()
+                    .collect::<Vec<_>>();
+                if version.len() == 3 && version.get(0) == Some(&3) && version.get(1) == Some(&1) {
+                    Ok(OpenApiVersion::Version31)
+                } else {
+                    let expected: &dyn Expected = &"3.1.0";
+                    Err(Error::invalid_value(
+                        serde::de::Unexpected::Str(&v),
+                        expected,
+                    ))
+                }
+            }
+        }
+
+        deserializer.deserialize_string(VersionVisitor)
     }
 }
 
@@ -610,12 +657,13 @@ mod tests {
         server::Server,
         ToSchema,
     };
+    use self::tests::schema::SchemaType;
 
     use salvo_core::{http::ResBody, prelude::*};
 
     #[test]
     fn serialize_deserialize_openapi_version_success() -> Result<(), serde_json::Error> {
-        assert_eq!(serde_json::to_value(&OpenApiVersion::Version3)?, "3.1.0");
+        assert_eq!(serde_json::to_value(&OpenApiVersion::Version31)?, "3.1.0");
         Ok(())
     }
 
@@ -768,8 +816,8 @@ mod tests {
                 Components::new().add_schema(
                     "User2",
                     Object::new()
-                        .schema_type(SchemaType::Object)
-                        .property("name", Object::new().schema_type(SchemaType::String)),
+                        .schema_type(SchemaType::new(Type::Object))
+                        .property("name", Object::new().schema_type(SchemaType::new(Type::String))),
                 ),
             );
 
@@ -831,6 +879,141 @@ mod tests {
         )
     }
 
+    
+    #[test]
+    fn merge_same_path_diff_methods() {
+        let mut api_1 = OpenApi::new(
+            Info::new("Api", "v1"),
+            PathsBuilder::new()
+                .path(
+                    "/api/v1/user",
+                    PathItem::new(
+                        PathItemType::Get,
+                        OperationBuilder::new()
+                            .response("200", Response::new("Get user success 1")),
+                    ),
+                )
+                .build(),
+        );
+
+        let api_2 = OpenApiBuilder::new()
+            .info(Info::new("Api", "v2"))
+            .paths(
+                PathsBuilder::new()
+                    .path(
+                        "/api/v1/user",
+                        PathItem::new(
+                            PathItemType::Get,
+                            OperationBuilder::new()
+                                .response("200", Response::new("This will not get added")),
+                        ),
+                    )
+                    .path(
+                        "/api/v1/user",
+                        PathItem::new(
+                            PathItemType::Post,
+                            OperationBuilder::new()
+                                .response("200", Response::new("Post user success 1")),
+                        ),
+                    )
+                    .path(
+                        "/api/v2/user",
+                        PathItem::new(
+                            PathItemType::Get,
+                            OperationBuilder::new()
+                                .response("200", Response::new("Get user success 2")),
+                        ),
+                    )
+                    .path(
+                        "/api/v2/user",
+                        PathItem::new(
+                            PathItemType::Post,
+                            OperationBuilder::new()
+                                .response("200", Response::new("Post user success 2")),
+                        ),
+                    )
+                    .build(),
+            )
+            .components(Some(
+                ComponentsBuilder::new()
+                    .schema(
+                        "User2",
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::new(Type::Object))
+                            .property(
+                                "name",
+                                ObjectBuilder::new()
+                                    .schema_type(SchemaType::new(Type::String))
+                                    .build(),
+                            ),
+                    )
+                    .build(),
+            ))
+            .build();
+
+        api_1.merge(api_2);
+        let value = serde_json::to_value(&api_1).unwrap();
+
+        assert_eq!(
+            value,
+            json!(
+                {
+                  "openapi": "3.0.3",
+                  "info": {
+                    "title": "Api",
+                    "version": "v1"
+                  },
+                  "paths": {
+                    "/api/v2/user": {
+                      "get": {
+                        "responses": {
+                          "200": {
+                            "description": "Get user success 2"
+                          }
+                        }
+                      },
+                      "post": {
+                        "responses": {
+                          "200": {
+                            "description": "Post user success 2"
+                          }
+                        }
+                      }
+                    },
+                    "/api/v1/user": {
+                      "get": {
+                        "responses": {
+                          "200": {
+                            "description": "Get user success 1"
+                          }
+                        }
+                      },
+                      "post": {
+                        "responses": {
+                          "200": {
+                            "description": "Post user success 1"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "components": {
+                    "schemas": {
+                      "User2": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            )
+        )
+    }
+    
     #[test]
     fn simple_document_with_security() {
         #[derive(Deserialize, Serialize, ToSchema)]
